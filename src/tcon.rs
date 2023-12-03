@@ -1,6 +1,9 @@
 use crate::v1::GENRE_LIST;
-use std::borrow::Cow;
-use std::mem::swap;
+use alloc::borrow::Cow;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::mem::swap;
 
 #[derive(Copy, Clone)]
 pub struct Parser<'a>(&'a str);

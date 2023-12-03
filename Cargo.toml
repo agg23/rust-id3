@@ -15,8 +15,9 @@ include = ["src/*", "Cargo.toml", "LICENSE", "README.md"]
 
 [dependencies]
 bitflags = "2.0"
-byteorder = "1.4"
-flate2 = "1"
+byteorder = { version = "1.4", default-features = false }
+acid_io = { path = "../acid_io", features = ["alloc", "byteorder"] }
+miniz_oxide = "0.7.1"
 tokio = { version = "1.21", default-features = false, features = ["rt", "macros", "io-util", "fs"], optional = true}
 
 [dev-dependencies]

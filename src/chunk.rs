@@ -1,12 +1,15 @@
 use crate::storage::{PlainStorage, Storage};
 use crate::{Error, ErrorKind, Tag, Version};
+use acid_io::{BufReader, Read, Seek, SeekFrom, Write};
+use alloc::string::String;
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
-use std::convert::TryFrom;
-use std::fmt;
+use core::convert::TryFrom;
+use core::convert::TryInto;
+use core::fmt;
+#[cfg(feature = "std")]
 use std::fs;
-use std::io::prelude::*;
-use std::io::{BufReader, Seek, SeekFrom};
-use std::{convert::TryInto, io};
+#[cfg(feature = "std")]
+use std::prelude::*;
 
 const TAG_LEN: u32 = 4; // Size of a tag.
 const SIZE_LEN: u32 = 4; // Size of a 32 bits integer.
@@ -15,10 +18,11 @@ const CHUNK_HEADER_LEN: u32 = TAG_LEN + SIZE_LEN;
 const ID3_TAG: ChunkTag = ChunkTag(*b"ID3 ");
 
 /// Attempts to load a ID3 tag from the given chunk stream.
+#[cfg(feature = "std")]
 pub fn load_id3_chunk<F, R>(mut reader: R) -> crate::Result<Tag>
 where
     F: ChunkFormat,
-    R: io::Read + io::Seek,
+    R: Read + Seek,
 {
     let root_chunk = ChunkHeader::read_root_chunk_header::<F, _>(&mut reader)?;
 
@@ -35,6 +39,7 @@ where
 
 /// Writes a tag to the given file. If the file contains no previous tag data, a new ID3
 /// chunk is created. Otherwise, the tag is overwritten in place.
+#[cfg(feature = "std")]
 pub fn write_id3_chunk_file<F: ChunkFormat>(
     mut file: &mut fs::File,
     tag: &Tag,
@@ -149,6 +154,7 @@ pub fn write_id3_chunk_file<F: ChunkFormat>(
 
 /// Locates the root and ID3 chunks, returning their headers. The ID3 chunk may not be
 /// present. Returns a pair of (root chunk header, ID3 header).
+#[cfg(feature = "std")]
 fn locate_relevant_chunks<F, R>(mut input: R) -> crate::Result<(ChunkHeader, Option<ChunkHeader>)>
 where
     F: ChunkFormat,
@@ -193,7 +199,7 @@ impl PartialEq for ChunkTag {
 }
 
 impl TryFrom<&[u8]> for ChunkTag {
-    type Error = std::array::TryFromSliceError;
+    type Error = core::array::TryFromSliceError;
 
     fn try_from(tag: &[u8]) -> Result<Self, Self::Error> {
         let tag = tag.try_into()?;
@@ -246,7 +252,7 @@ impl ChunkHeader {
     pub fn read_root_chunk_header<F, R>(mut reader: R) -> crate::Result<Self>
     where
         F: ChunkFormat,
-        R: io::Read,
+        R: Read,
     {
         let invalid_header_error = Error::new(ErrorKind::InvalidInput, "invalid chunk header");
 
@@ -286,10 +292,10 @@ impl ChunkHeader {
     /// |-------+------+-----------------|
     /// | tag   |    4 | chunk type      |
     /// | size  |    4 | 32 bits integer |
-    pub fn read<F, R>(mut reader: R) -> io::Result<Self>
+    pub fn read<F, R>(mut reader: R) -> acid_io::Result<Self>
     where
         F: ChunkFormat,
-        R: io::Read,
+        R: Read,
     {
         const BUFFER_SIZE: usize = CHUNK_HEADER_LEN as usize;
 
@@ -319,7 +325,7 @@ impl ChunkHeader {
     pub fn find_id3<F, R>(reader: R, end: u64) -> crate::Result<Self>
     where
         F: ChunkFormat,
-        R: io::Read + io::Seek,
+        R: Read + Seek,
     {
         Self::find::<F, _>(&ID3_TAG, reader, end)?
             .ok_or_else(|| Error::new(ErrorKind::NoTag, "No tag chunk found!"))
@@ -337,7 +343,7 @@ impl ChunkHeader {
     fn find<F, R>(tag: &ChunkTag, mut reader: R, end: u64) -> crate::Result<Option<Self>>
     where
         F: ChunkFormat,
-        R: io::Read + io::Seek,
+        R: Read + Seek,
     {
         let mut pos = 0;
 
@@ -363,10 +369,10 @@ impl ChunkHeader {
     /// |-------+------+-------------------------------|
     /// | tag   |    4 | chunk type                    |
     /// | size  |    4 | 32 bits little endian integer |
-    pub fn write_to<F, W>(&self, mut writer: W) -> io::Result<()>
+    pub fn write_to<F, W>(&self, mut writer: W) -> acid_io::Result<()>
     where
         F: ChunkFormat,
-        W: io::Write,
+        W: Write,
     {
         const BUFFER_SIZE: usize = CHUNK_HEADER_LEN as usize;
 
@@ -385,7 +391,7 @@ impl fmt::Debug for ChunkHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let tag = String::from_utf8_lossy(&self.tag.0);
 
-        f.debug_struct(std::any::type_name::<Self>())
+        f.debug_struct(core::any::type_name::<Self>())
             .field("tag", &tag)
             .field("size", &self.size)
             .finish()

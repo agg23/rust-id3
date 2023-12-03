@@ -3,9 +3,12 @@ use crate::frame::Frame;
 use crate::stream::encoding::Encoding;
 use crate::tag::Version;
 use crate::taglike::TagLike;
-use std::borrow::Cow;
-use std::fmt;
-use std::io;
+use acid_io::Write;
+use alloc::borrow::{Cow, ToOwned};
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
+use core::fmt;
 
 /// The decoded contents of a [`Frame`].
 ///
@@ -261,6 +264,7 @@ impl Content {
     ///
     /// See the compatibility note on the docs of `Content` for the reason of why this function
     /// exists.
+    #[cfg(feature = "std")]
     pub fn to_unknown(&self) -> crate::Result<Cow<'_, Unknown>> {
         match self {
             Content::Unknown(unknown) => Ok(Cow::Borrowed(unknown)),
@@ -486,7 +490,7 @@ impl SynchronisedLyrics {
     /// # Errors
     ///
     /// This function will return any I/O error reported while formatting.
-    pub fn fmt_table(&self, mut writer: impl io::Write) -> io::Result<()> {
+    pub fn fmt_table(&self, mut writer: impl Write) -> acid_io::Result<()> {
         match self.timestamp_format {
             TimestampFormat::Mpeg => {
                 writeln!(writer, "Frame\t{}", self.content_type)?;

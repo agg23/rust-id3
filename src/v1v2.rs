@@ -1,11 +1,15 @@
 use crate::{v1, Error, ErrorKind, StorageFile, Tag, Version};
+use acid_io::{Read, Seek};
+#[cfg(feature = "std")]
+use core::fs::File;
+#[cfg(feature = "std")]
 use std::fs;
-use std::fs::File;
-use std::io;
+#[cfg(feature = "std")]
 use std::path::Path;
 
 /// Returns which tags are present in the specified file.
-pub fn is_candidate(mut file: impl io::Read + io::Seek) -> crate::Result<FormatVersion> {
+#[cfg(feature = "std")]
+pub fn is_candidate(mut file: impl Read + Seek) -> crate::Result<FormatVersion> {
     let v2 = Tag::is_candidate(&mut file)?;
     let v1 = v1::Tag::is_candidate(&mut file)?;
     Ok(match (v1, v2) {
@@ -17,6 +21,7 @@ pub fn is_candidate(mut file: impl io::Read + io::Seek) -> crate::Result<FormatV
 }
 
 /// Returns which tags are present in the specified file.
+#[cfg(feature = "std")]
 pub fn is_candidate_path(path: impl AsRef<Path>) -> crate::Result<FormatVersion> {
     is_candidate(File::open(path)?)
 }
@@ -24,7 +29,7 @@ pub fn is_candidate_path(path: impl AsRef<Path>) -> crate::Result<FormatVersion>
 /// Attempts to read an ID3v2 or ID3v1 tag, in that order.
 ///
 /// If neither version tag is found, an error with [`ErrorKind::NoTag`] is returned.
-pub fn read_from(mut file: impl io::Read + io::Seek) -> crate::Result<Tag> {
+pub fn read_from(mut file: impl Read + Seek) -> crate::Result<Tag> {
     match Tag::read_from(&mut file) {
         Err(Error {
             kind: ErrorKind::NoTag,
@@ -52,6 +57,7 @@ pub fn read_from(mut file: impl io::Read + io::Seek) -> crate::Result<Tag> {
 /// Attempts to read an ID3v2 or ID3v1 tag, in that order.
 ///
 /// If neither version tag is found, an error with [`ErrorKind::NoTag`] is returned.
+#[cfg(feature = "std")]
 pub fn read_from_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
     read_from(File::open(path)?)
 }
@@ -61,6 +67,7 @@ pub fn read_from_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
 ///
 /// If any ID3v1 tag is present it will be REMOVED as it is not able to fully represent a ID3v2
 /// tag.
+#[cfg(feature = "std")]
 pub fn write_to_file(mut file: impl StorageFile, tag: &Tag, version: Version) -> crate::Result<()> {
     tag.write_to_file(&mut file, version)?;
     v1::Tag::remove_from_file(&mut file)?;
@@ -68,6 +75,7 @@ pub fn write_to_file(mut file: impl StorageFile, tag: &Tag, version: Version) ->
 }
 
 /// Conventience function for [`write_to_file`].
+#[cfg(feature = "std")]
 pub fn write_to_path(path: impl AsRef<Path>, tag: &Tag, version: Version) -> crate::Result<()> {
     let file = fs::OpenOptions::new().read(true).write(true).open(path)?;
     write_to_file(file, tag, version)
@@ -76,6 +84,7 @@ pub fn write_to_path(path: impl AsRef<Path>, tag: &Tag, version: Version) -> cra
 /// Ensures that both ID3v1 and ID3v2 are not present in the specified file.
 ///
 /// Returns [`FormatVersion`] representing the previous state.
+#[cfg(feature = "std")]
 pub fn remove_from_path(path: impl AsRef<Path>) -> crate::Result<FormatVersion> {
     let v2 = Tag::remove_from_path(&path)?;
     let v1 = v1::Tag::remove_from_path(path)?;
@@ -104,8 +113,8 @@ pub enum FormatVersion {
 mod tests {
     use super::*;
     use crate::TagLike;
-    use std::fs::File;
-    use std::io::{copy, Write};
+    use core::fs::File;
+    use core::{copy, Write};
 
     fn file_with_both_formats() -> tempfile::NamedTempFile {
         // Write both ID3v1 and ID3v2 tags to a single file, the ID3v2 should be prefered when

@@ -3,12 +3,17 @@ use crate::stream::{frame, unsynch};
 use crate::tag::{Tag, Version};
 use crate::taglike::TagLike;
 use crate::{Error, ErrorKind};
+use acid_io::{byteorder::WriteBytesExt, Read, Seek, SeekFrom, Write};
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use alloc::{format, vec};
 use bitflags::bitflags;
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use std::cmp;
+use byteorder::{BigEndian, ByteOrder};
+use core::cmp;
+use core::ops::Range;
+#[cfg(feature = "std")]
 use std::fs;
-use std::io::{self, Read, Write};
-use std::ops::Range;
+#[cfg(feature = "std")]
 use std::path::Path;
 
 static DEFAULT_FILE_DISCARD: &[&str] = &[
@@ -73,7 +78,7 @@ impl Header {
 }
 
 impl Header {
-    fn decode(mut reader: impl io::Read) -> crate::Result<Header> {
+    fn decode(mut reader: impl Read) -> crate::Result<Header> {
         let mut header = [0; 10];
         let nread = reader.read(&mut header)?;
         let base_header = Self::decode_base_header(&header[..nread])?;
@@ -110,9 +115,9 @@ impl Header {
 
     #[cfg(any(feature = "tokio", test))]
     async fn async_decode(
-        mut reader: impl tokio::io::AsyncRead + std::marker::Unpin,
+        mut reader: impl tokAsyncRead + std::marker::Unpin,
     ) -> crate::Result<Header> {
-        use tokio::io::AsyncReadExt;
+        use tokAsyncReadExt;
 
         let mut header = [0; 10];
         let nread = reader.read(&mut header).await?;
@@ -198,7 +203,7 @@ impl Header {
     }
 }
 
-pub fn decode(mut reader: impl io::Read) -> crate::Result<Tag> {
+pub fn decode(mut reader: impl Read) -> crate::Result<Tag> {
     let header = Header::decode(&mut reader)?;
 
     decode_remaining(reader, header)
@@ -206,12 +211,12 @@ pub fn decode(mut reader: impl io::Read) -> crate::Result<Tag> {
 
 #[cfg(any(feature = "tokio", test))]
 pub async fn async_decode(
-    mut reader: impl tokio::io::AsyncRead + std::marker::Unpin,
+    mut reader: impl tokAsyncRead + std::marker::Unpin,
 ) -> crate::Result<Tag> {
     let header = Header::async_decode(&mut reader).await?;
 
     let reader = {
-        use tokio::io::AsyncReadExt;
+        use tokAsyncReadExt;
 
         let mut buf = Vec::new();
 
@@ -219,13 +224,13 @@ pub async fn async_decode(
             .take(header.frame_bytes())
             .read_to_end(&mut buf)
             .await?;
-        std::io::Cursor::new(buf)
+        std::Cursor::new(buf)
     };
 
     decode_remaining(reader, header)
 }
 
-fn decode_remaining(mut reader: impl io::Read, header: Header) -> crate::Result<Tag> {
+fn decode_remaining(mut reader: impl Read, header: Header) -> crate::Result<Tag> {
     match header.version {
         Version::Id3v22 => {
             // Limit the reader only to the given tag_size, don't return any more bytes after that.
@@ -240,11 +245,12 @@ fn decode_remaining(mut reader: impl io::Read, header: Header) -> crate::Result<
         }
         Version::Id3v23 => {
             // Unsynchronization is applied to the whole tag, excluding the header.
-            let mut reader: Box<dyn io::Read> = if header.flags.contains(Flags::UNSYNCHRONISATION) {
-                Box::new(unsynch::Reader::new(reader))
-            } else {
-                Box::new(reader)
-            };
+            // TODO: This is bad
+            // let mut reader: Box<dyn Read> = if header.flags.contains(Flags::UNSYNCHRONISATION) {
+            //     Box::new(unsynch::Reader::new(reader))
+            // } else {
+            //     Box::new(reader)
+            // };
 
             let mut offset = 0;
             let mut tag = Tag::with_version(header.version);
@@ -283,7 +289,7 @@ fn decode_remaining(mut reader: impl io::Read, header: Header) -> crate::Result<
     }
 }
 
-pub fn decode_v2_frames(mut reader: impl io::Read) -> crate::Result<Tag> {
+pub fn decode_v2_frames(mut reader: impl Read) -> crate::Result<Tag> {
     let mut tag = Tag::with_version(Version::Id3v22);
     // Add all frames, until either an error is thrown or there are no more frames to parse
     // (because of EOF or a Padding).
@@ -373,7 +379,8 @@ impl Encoder {
     ///
     /// Note that the plain tag is written, regardless of the original contents. To safely encode a
     /// tag to an MP3 file, use [`Encoder::encode_to_path`].
-    pub fn encode(&self, tag: &Tag, mut writer: impl io::Write) -> crate::Result<()> {
+    #[cfg(feature = "std")]
+    pub fn encode(&self, tag: &Tag, mut writer: impl Write) -> crate::Result<()> {
         // remove frames which have the flags indicating they should be removed
         let saved_frames = tag
             .frames()
@@ -420,6 +427,7 @@ impl Encoder {
     }
 
     /// Encodes a [`Tag`] and replaces any existing tag in the file.
+    #[cfg(feature = "std")]
     pub fn write_to_file(&self, tag: &Tag, mut file: impl StorageFile) -> crate::Result<()> {
         #[allow(clippy::reversed_empty_ranges)]
         let location = locate_id3v2(&mut file)?.unwrap_or(0..0); // Create a new tag if none could be located.
@@ -433,11 +441,13 @@ impl Encoder {
 
     /// Encodes a [`Tag`] and replaces any existing tag in the file.
     #[deprecated(note = "Use write_to_file")]
+    #[cfg(feature = "std")]
     pub fn encode_to_file(&self, tag: &Tag, file: &mut fs::File) -> crate::Result<()> {
         self.write_to_file(tag, file)
     }
 
     /// Encodes a [`Tag`] and replaces any existing tag in the file pointed to by the specified path.
+    #[cfg(feature = "std")]
     pub fn write_to_path(&self, tag: &Tag, path: impl AsRef<Path>) -> crate::Result<()> {
         let mut file = fs::OpenOptions::new().read(true).write(true).open(path)?;
         self.write_to_file(tag, &mut file)?;
@@ -447,6 +457,7 @@ impl Encoder {
 
     /// Encodes a [`Tag`] and replaces any existing tag in the file pointed to by the specified path.
     #[deprecated(note = "Use write_to_path")]
+    #[cfg(feature = "std")]
     pub fn encode_to_path(&self, tag: &Tag, path: impl AsRef<Path>) -> crate::Result<()> {
         self.write_to_path(tag, path)
     }
@@ -458,7 +469,7 @@ impl Default for Encoder {
     }
 }
 
-pub fn locate_id3v2(mut reader: impl io::Read + io::Seek) -> crate::Result<Option<Range<u64>>> {
+pub fn locate_id3v2(mut reader: impl Read + Seek) -> crate::Result<Option<Range<u64>>> {
     let header = match Header::decode(&mut reader) {
         Ok(v) => v,
         Err(err) => match err.kind {
@@ -468,7 +479,7 @@ pub fn locate_id3v2(mut reader: impl io::Read + io::Seek) -> crate::Result<Optio
     };
 
     let tag_size = header.tag_size();
-    reader.seek(io::SeekFrom::Start(tag_size))?;
+    reader.seek(SeekFrom::Start(tag_size))?;
     let num_padding = reader
         .bytes()
         .take_while(|rs| rs.as_ref().map(|b| *b == 0x00).unwrap_or(false))
@@ -485,7 +496,7 @@ mod tests {
         SynchronisedLyricsType, TableOfContents, TimestampFormat, Unknown,
     };
     use std::fs;
-    use std::io::{self, Read};
+    use std::{self, Read};
 
     fn make_tag(version: Version) -> Tag {
         let mut tag = Tag::new();
@@ -590,9 +601,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[toktest]
     async fn read_id3v22_tokio() {
-        let mut file = tokio::fs::File::open("testdata/id3v22.id3").await.unwrap();
+        let mut file = tokfs::File::open("testdata/id3v22.id3").await.unwrap();
         let tag: Tag = async_decode(&mut file).await.unwrap();
         assert_eq!("Henry Frottey INTRO", tag.title().unwrap());
         assert_eq!("Hörbuch & Gesprochene Inhalte", tag.genre().unwrap());
@@ -625,9 +636,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[toktest]
     async fn read_id3v23_tokio() {
-        let mut file = tokio::fs::File::open("testdata/id3v23.id3").await.unwrap();
+        let mut file = tokfs::File::open("testdata/id3v23.id3").await.unwrap();
         let tag = async_decode(&mut file).await.unwrap();
         assert_eq!("Title", tag.title().unwrap());
         assert_eq!("Genre", tag.genre().unwrap());
@@ -762,11 +773,9 @@ mod tests {
         assert_eq!(2, tag.track().unwrap());
     }
 
-    #[tokio::test]
+    #[toktest]
     async fn read_id3v24_extended_tokio() {
-        let mut file = tokio::fs::File::open("testdata/id3v24_ext.id3")
-            .await
-            .unwrap();
+        let mut file = tokfs::File::open("testdata/id3v24_ext.id3").await.unwrap();
         let tag = async_decode(&mut file).await.unwrap();
         assert_eq!("Title", tag.title().unwrap());
         assert_eq!("Genre", tag.genre().unwrap());
@@ -787,7 +796,7 @@ mod tests {
             .version(Version::Id3v22)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -804,7 +813,7 @@ mod tests {
             .version(Version::Id3v22)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -841,7 +850,7 @@ mod tests {
             .version(Version::Id3v22)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -857,7 +866,7 @@ mod tests {
             .version(Version::Id3v23)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -874,7 +883,7 @@ mod tests {
             .version(Version::Id3v23)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -891,7 +900,7 @@ mod tests {
             .version(Version::Id3v23)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -907,7 +916,7 @@ mod tests {
             .version(Version::Id3v24)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -924,7 +933,7 @@ mod tests {
             .version(Version::Id3v24)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -941,7 +950,7 @@ mod tests {
             .version(Version::Id3v24)
             .encode(&tag, &mut buffer)
             .unwrap();
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert_eq!(tag, tag_read);
     }
 
@@ -961,7 +970,7 @@ mod tests {
             .encode(&tag, &mut buffer)
             .unwrap();
 
-        let tag_read = decode(&mut io::Cursor::new(buffer)).unwrap();
+        let tag_read = decode(&mut Cursor::new(buffer)).unwrap();
         assert!(tag_read.get("TLEN").is_none());
     }
 

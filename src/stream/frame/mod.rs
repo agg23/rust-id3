@@ -3,16 +3,20 @@ use crate::frame::Frame;
 use crate::stream::encoding::Encoding;
 use crate::stream::unsynch;
 use crate::tag::Version;
-use flate2::read::ZlibDecoder;
-use std::io;
-use std::str;
+use acid_io::Read;
+use acid_io::Write;
+use alloc::boxed::Box;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::str;
+use miniz_oxide::inflate::decompress_to_vec_zlib_with_limit;
 
 pub mod content;
 pub mod v2;
 pub mod v3;
 pub mod v4;
 
-pub fn decode(reader: impl io::Read, version: Version) -> crate::Result<Option<(usize, Frame)>> {
+pub fn decode(reader: impl Read, version: Version) -> crate::Result<Option<(usize, Frame)>> {
     match version {
         Version::Id3v22 => unimplemented!(),
         Version::Id3v23 => v3::decode(reader),
@@ -21,28 +25,49 @@ pub fn decode(reader: impl io::Read, version: Version) -> crate::Result<Option<(
 }
 
 fn decode_content(
-    reader: impl io::Read,
+    reader: impl Read,
     version: Version,
     id: &str,
     compression: bool,
     unsynchronisation: bool,
 ) -> crate::Result<(Content, Option<Encoding>)> {
+    fn get_bytes(reader: impl Read) -> Vec<u8> {
+        reader
+            .bytes()
+            .filter_map(|b| if let Ok(value) = b { Some(value) } else { None })
+            .collect::<Vec<u8>>()
+    }
+
     if unsynchronisation {
         let reader_unsynch = unsynch::Reader::new(reader);
+
         if compression {
-            content::decode(id, version, ZlibDecoder::new(reader_unsynch))
+            content::decode(
+                id,
+                version,
+                decompress_to_vec_zlib_with_limit(get_bytes(reader_unsynch).as_slice(), 4096)
+                    .unwrap()
+                    .as_slice(),
+            )
         } else {
             content::decode(id, version, reader_unsynch)
         }
     } else if compression {
-        content::decode(id, version, ZlibDecoder::new(reader))
+        content::decode(
+            id,
+            version,
+            decompress_to_vec_zlib_with_limit(get_bytes(reader).as_slice(), 4096)
+                .unwrap()
+                .as_slice(),
+        )
     } else {
         content::decode(id, version, reader)
     }
 }
 
+#[cfg(feature = "std")]
 pub fn encode(
-    writer: impl io::Write,
+    writer: impl Write,
     frame: &Frame,
     version: Version,
     unsynchronization: bool,

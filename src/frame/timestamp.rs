@@ -1,8 +1,8 @@
-use std::cmp;
-use std::convert::TryFrom;
-use std::error;
-use std::fmt;
-use std::str::FromStr;
+use core::cmp;
+use core::convert::TryFrom;
+use core::error;
+use core::fmt;
+use core::str::FromStr;
 
 /// Represents a date and time according to the ID3v2.4 spec:
 ///

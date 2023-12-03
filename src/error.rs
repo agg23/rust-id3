@@ -1,11 +1,11 @@
 use crate::tag::Tag;
-use std::error;
-use std::fmt;
-use std::io;
-use std::string;
+use alloc::string::String;
+use alloc::string::{self, ToString};
+use alloc::vec::Vec;
+use core::fmt;
 
 /// Type alias for the result of tag operations.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
 /// Takes a tag result and maps any partial tag to Ok. An Ok result is left untouched. An Err
 /// without partial tag is returned as the initial error.
@@ -35,8 +35,8 @@ pub fn partial_tag_ok(rs: Result<Tag>) -> Result<Tag> {
 /// Kinds of errors that may occur while performing metadata operations.
 #[derive(Debug)]
 pub enum ErrorKind {
-    /// An error kind indicating that an IO error has occurred. Contains the original io::Error.
-    Io(io::Error),
+    /// An error kind indicating that an IO error has occurred. Contains the original Error.
+    Io(acid_io::Error),
     /// An error kind indicating that a string decoding error has occurred. Contains the invalid
     /// bytes.
     StringDecoding(Vec<u8>),
@@ -79,17 +79,17 @@ impl Error {
     }
 }
 
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+impl core::error::Error for Error {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self.kind {
-            ErrorKind::Io(ref err) => Some(err),
+            // ErrorKind::Io(ref err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Error {
+impl From<acid_io::Error> for Error {
+    fn from(err: acid_io::Error) -> Error {
         Error {
             kind: ErrorKind::Io(err),
             description: "".to_string(),

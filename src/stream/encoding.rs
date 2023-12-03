@@ -1,5 +1,9 @@
 use crate::{Error, ErrorKind};
-use std::convert::TryInto;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::convert::TryInto;
 
 /// Types of text encodings used in ID3 frames.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

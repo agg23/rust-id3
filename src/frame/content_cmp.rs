@@ -1,4 +1,5 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
 
 /// used to express that some content should or should not be compared
 pub enum ContentCmp<'a> {

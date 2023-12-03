@@ -7,18 +7,22 @@ use crate::stream::encoding::Encoding;
 use crate::stream::frame;
 use crate::tag::Version;
 use crate::{Error, ErrorKind};
-use std::convert::{TryFrom, TryInto};
-use std::io;
-use std::iter;
-use std::mem::size_of;
+use acid_io::{IoSlice, Read, Write};
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::convert::{TryFrom, TryInto};
+use core::iter;
+use core::mem::size_of;
 
-struct Encoder<W: io::Write> {
+struct Encoder<W: Write> {
     w: W,
     version: Version,
     encoding: Encoding,
 }
 
-impl<W: io::Write> Encoder<W> {
+#[cfg(feature = "std")]
+impl<W: Write> Encoder<W> {
     fn bytes(&mut self, bytes: impl AsRef<[u8]>) -> crate::Result<()> {
         let bytes = bytes.as_ref();
         self.w.write_all(bytes)?;
@@ -320,8 +324,9 @@ impl<W: io::Write> Encoder<W> {
     }
 }
 
+#[cfg(feature = "std")]
 pub fn encode(
-    mut writer: impl io::Write,
+    mut writer: impl Write,
     content: &Content,
     version: Version,
     encoding: Encoding,
@@ -358,7 +363,7 @@ pub fn encode(
 pub fn decode(
     id: &str,
     version: Version,
-    mut reader: impl io::Read,
+    mut reader: impl Read,
 ) -> crate::Result<(Content, Option<Encoding>)> {
     let mut data = Vec::new();
     reader.read_to_end(&mut data)?;

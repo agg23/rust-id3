@@ -2,7 +2,9 @@
 //! existing software and hardware. There is no use in 'unsynchronising' tags if the file is only
 //! to be processed only by ID3v2 aware software and hardware. Unsynchronisation is only useful
 //! with tags in MPEG 1/2 layer I, II and III, MPEG 2.5 and AAC files.
-use std::io;
+
+use acid_io::Read;
+use alloc::vec::Vec;
 
 /// Returns the synchsafe variant of a `u32` value.
 pub fn encode_u32(n: u32) -> u32 {
@@ -23,7 +25,7 @@ pub fn decode_u32(n: u32) -> u32 {
 /// The decoder has an internal buffer.
 pub struct Reader<R>
 where
-    R: io::Read,
+    R: Read,
 {
     reader: R,
     buf: [u8; 8192],
@@ -34,7 +36,7 @@ where
 
 impl<R> Reader<R>
 where
-    R: io::Read,
+    R: Read,
 {
     pub fn new(reader: R) -> Reader<R> {
         Reader {
@@ -47,11 +49,11 @@ where
     }
 }
 
-impl<R> io::Read for Reader<R>
+impl<R> Read for Reader<R>
 where
-    R: io::Read,
+    R: Read,
 {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> acid_io::Result<usize> {
         let mut i = 0;
 
         while i < buf.len() {
@@ -106,8 +108,8 @@ mod tests {
     fn decode_vec(buffer: &mut Vec<u8>) {
         let buf_len = buffer.len();
         let from_buf = mem::replace(buffer, Vec::with_capacity(buf_len));
-        let mut reader = Reader::new(io::Cursor::new(from_buf));
-        io::copy(&mut reader, buffer).unwrap();
+        let mut reader = Reader::new(Cursor::new(from_buf));
+        copy(&mut reader, buffer).unwrap();
     }
 
     #[test]

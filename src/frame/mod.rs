@@ -1,8 +1,10 @@
 use crate::error::{Error, ErrorKind};
 use crate::stream::encoding::Encoding;
 use crate::tag::Version;
-use std::fmt;
-use std::str;
+use alloc::format;
+use alloc::string::{String, ToString};
+use core::fmt;
+use core::str;
 
 pub use self::content::{
     Chapter, Comment, Content, EncapsulatedObject, ExtendedLink, ExtendedText, Lyrics,

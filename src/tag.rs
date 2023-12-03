@@ -1,3 +1,7 @@
+use acid_io::{Read, Seek, SeekFrom, Write};
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
 use crate::chunk;
 use crate::frame::{
     Chapter, Comment, EncapsulatedObject, ExtendedLink, ExtendedText, Frame, Lyrics, Picture,
@@ -8,11 +12,10 @@ use crate::stream;
 use crate::taglike::TagLike;
 use crate::v1;
 use crate::StorageFile;
-use std::fmt;
-use std::fs::{self, File};
-use std::io::{self, BufReader, Write};
-use std::iter::{FromIterator, Iterator};
-use std::path::Path;
+use core::fmt;
+#[cfg(feature = "std")]
+use core::fs::{self, File};
+use core::iter::{FromIterator, Iterator};
 
 /// Denotes the version of a tag.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -78,32 +81,35 @@ impl<'a> Tag {
     }
 
     // Read/write functions are declared below. We adhere to the following naming conventions:
-    // * <format> -> io::Read/io::Write (+ io::Seek?)
+    // * <format> -> Read/Write (+ Seek?)
     // * <format>_path -> impl AsRef<Path>
     // * <format>_file -> &mut File
 
     /// Will return true if the reader is a candidate for an ID3 tag. The reader position will be
     /// reset back to the previous position before returning.
-    pub fn is_candidate(mut reader: impl io::Read + io::Seek) -> crate::Result<bool> {
+    #[cfg(feature = "std")]
+    pub fn is_candidate(mut reader: impl Read + Seek) -> crate::Result<bool> {
         let initial_position = reader.stream_position()?;
         let rs = stream::tag::locate_id3v2(&mut reader);
-        reader.seek(io::SeekFrom::Start(initial_position))?;
+        reader.seek(SeekFrom::Start(initial_position))?;
         Ok(rs?.is_some())
     }
 
     /// Detects the presence of an ID3v2 tag at the current position of the reader and skips it
     /// if is found. Returns true if a tag was found.
-    pub fn skip(mut reader: impl io::Read + io::Seek) -> crate::Result<bool> {
+    #[cfg(feature = "std")]
+    pub fn skip(mut reader: impl Read + Seek) -> crate::Result<bool> {
         let initial_position = reader.stream_position()?;
         let range = stream::tag::locate_id3v2(&mut reader)?;
         let end = range.as_ref().map(|r| r.end).unwrap_or(0);
-        reader.seek(io::SeekFrom::Start(initial_position + end))?;
+        reader.seek(SeekFrom::Start(initial_position + end))?;
         Ok(range.is_some())
     }
 
     /// Removes an ID3v2 tag from the file at the specified path.
     ///
     /// Returns true if the file initially contained a tag.
+    #[cfg(feature = "std")]
     pub fn remove_from_path(path: impl AsRef<Path>) -> crate::Result<bool> {
         let mut file = fs::OpenOptions::new()
             .read(true)
@@ -117,6 +123,7 @@ impl<'a> Tag {
     /// Removes an ID3v2 tag from the specified file.
     ///
     /// Returns true if the file initially contained a tag.
+    #[cfg(feature = "std")]
     pub fn remove_from_file(mut file: &mut fs::File) -> crate::Result<bool> {
         let location = match stream::tag::locate_id3v2(&mut file)? {
             Some(l) => l,
@@ -130,19 +137,20 @@ impl<'a> Tag {
     }
 
     /// Attempts to read an ID3 tag from the reader.
-    pub fn read_from(reader: impl io::Read) -> crate::Result<Tag> {
+    pub fn read_from(reader: impl Read) -> crate::Result<Tag> {
         stream::tag::decode(reader)
     }
 
     /// Attempts to read an ID3 tag via Tokio from the reader.
     #[cfg(feature = "tokio")]
     pub async fn async_read_from(
-        reader: impl tokio::io::AsyncRead + std::marker::Unpin,
+        reader: impl tokAsyncRead + core::marker::Unpin,
     ) -> crate::Result<Tag> {
         stream::tag::async_decode(reader).await
     }
 
     /// Attempts to read an ID3 tag from the file at the indicated path.
+    #[cfg(feature = "std")]
     pub fn read_from_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
         let file = BufReader::new(File::open(path)?);
         Tag::read_from(file)
@@ -151,38 +159,44 @@ impl<'a> Tag {
     /// Attempts to read an ID3 tag via Tokio from the file at the indicated path.
     #[cfg(feature = "tokio")]
     pub async fn async_read_from_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
-        let file = tokio::io::BufReader::new(tokio::fs::File::open(path).await?);
+        let file = tokBufReader::new(tokfs::File::open(path).await?);
         stream::tag::async_decode(file).await
     }
 
     /// Reads an AIFF stream and returns any present ID3 tag.
-    pub fn read_from_aiff(reader: impl io::Read + io::Seek) -> crate::Result<Tag> {
+    #[cfg(feature = "std")]
+    pub fn read_from_aiff(reader: impl Read + Seek) -> crate::Result<Tag> {
         chunk::load_id3_chunk::<chunk::AiffFormat, _>(reader)
     }
 
     /// Reads an AIFF file at the specified path and returns any present ID3 tag.
+    #[cfg(feature = "std")]
     pub fn read_from_aiff_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
         let mut file = BufReader::new(File::open(path)?);
         chunk::load_id3_chunk::<chunk::AiffFormat, _>(&mut file)
     }
 
     /// Reads an AIFF file and returns any present ID3 tag.
+    #[cfg(feature = "std")]
     pub fn read_from_aiff_file(file: &mut fs::File) -> crate::Result<Tag> {
         chunk::load_id3_chunk::<chunk::AiffFormat, _>(file)
     }
 
     /// Reads an WAV stream and returns any present ID3 tag.
-    pub fn read_from_wav(reader: impl io::Read + io::Seek) -> crate::Result<Tag> {
+    #[cfg(feature = "std")]
+    pub fn read_from_wav(reader: impl Read + Seek) -> crate::Result<Tag> {
         chunk::load_id3_chunk::<chunk::WavFormat, _>(reader)
     }
 
     /// Reads an WAV file at the specified path and returns any present ID3 tag.
+    #[cfg(feature = "std")]
     pub fn read_from_wav_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
         let mut file = BufReader::new(File::open(path)?);
         chunk::load_id3_chunk::<chunk::WavFormat, _>(&mut file)
     }
 
     /// Reads an WAV file and returns any present ID3 tag.
+    #[cfg(feature = "std")]
     pub fn read_from_wav_file(file: &mut fs::File) -> crate::Result<Tag> {
         chunk::load_id3_chunk::<chunk::WavFormat, _>(file)
     }
@@ -191,7 +205,8 @@ impl<'a> Tag {
     ///
     /// Note that the plain tag is written, regardless of the original contents. To safely encode a
     /// tag to an MP3 file, use `Tag::write_to_file`.
-    pub fn write_to(&self, writer: impl io::Write, version: Version) -> crate::Result<()> {
+    #[cfg(feature = "std")]
+    pub fn write_to(&self, writer: impl Write, version: Version) -> crate::Result<()> {
         stream::tag::Encoder::new()
             .version(version)
             .encode(self, writer)
@@ -200,6 +215,7 @@ impl<'a> Tag {
     /// Attempts to write the ID3 tag from the file at the indicated path. If the specified path is
     /// the same path which the tag was read from, then the tag will be written to the padding if
     /// possible.
+    #[cfg(feature = "std")]
     pub fn write_to_file(&self, mut file: impl StorageFile, version: Version) -> crate::Result<()> {
         #[allow(clippy::reversed_empty_ranges)]
         let location = stream::tag::locate_id3v2(&mut file)?.unwrap_or(0..0); // Create a new tag if none could be located.
@@ -214,12 +230,14 @@ impl<'a> Tag {
     }
 
     /// Conventience function for [`write_to_file`].
+    #[cfg(feature = "std")]
     pub fn write_to_path(&self, path: impl AsRef<Path>, version: Version) -> crate::Result<()> {
         let file = fs::OpenOptions::new().read(true).write(true).open(path)?;
         self.write_to_file(file, version)
     }
 
     /// Overwrite WAV file ID3 chunk in a file
+    #[cfg(feature = "std")]
     pub fn write_to_aiff_path(
         &self,
         path: impl AsRef<Path>,
@@ -237,11 +255,13 @@ impl<'a> Tag {
     }
 
     /// Overwrite AIFF file ID3 chunk in a file. The file must be opened read/write.
+    #[cfg(feature = "std")]
     pub fn write_to_aiff_file(&self, file: &mut fs::File, version: Version) -> crate::Result<()> {
         chunk::write_id3_chunk_file::<chunk::AiffFormat>(file, self, version)
     }
 
     /// Overwrite WAV file ID3 chunk
+    #[cfg(feature = "std")]
     pub fn write_to_wav_path(&self, path: impl AsRef<Path>, version: Version) -> crate::Result<()> {
         let mut file = fs::OpenOptions::new()
             .read(true)
@@ -255,6 +275,7 @@ impl<'a> Tag {
     }
 
     /// Overwrite AIFF file ID3 chunk in a file. The file must be opened read/write.
+    #[cfg(feature = "std")]
     pub fn write_to_wav_file(&self, file: &mut fs::File, version: Version) -> crate::Result<()> {
         chunk::write_id3_chunk_file::<chunk::WavFormat>(file, self, version)
     }
@@ -498,8 +519,8 @@ impl From<v1::Tag> for Tag {
 mod tests {
     use super::*;
     use crate::taglike::TagLike;
-    use std::fs;
-    use std::{io::Read, io::Seek};
+    use core::fs;
+    use core::{Read, Seek};
     use tempfile::tempdir;
 
     #[test]
@@ -509,16 +530,16 @@ mod tests {
         {
             let mut tag_file = fs::File::create(&tmp_name).unwrap();
             let mut original = fs::File::open("testdata/id3v24.id3").unwrap();
-            io::copy(&mut original, &mut tag_file).unwrap();
+            copy(&mut original, &mut tag_file).unwrap();
         }
         let mut tag_file = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .open(&tmp_name)
             .unwrap();
-        tag_file.seek(io::SeekFrom::Start(0)).unwrap();
+        tag_file.seek(SeekFrom::Start(0)).unwrap();
         assert!(Tag::remove_from_file(&mut tag_file).unwrap());
-        tag_file.seek(io::SeekFrom::Start(0)).unwrap();
+        tag_file.seek(SeekFrom::Start(0)).unwrap();
         assert!(!Tag::remove_from_file(&mut tag_file).unwrap());
     }
 
@@ -534,7 +555,7 @@ mod tests {
         tag.set_artist("Artist");
         tag.write_to_path(&tmp, Version::Id3v24).unwrap();
         // Check with ffprobe
-        use std::process::Command;
+        use core::process::Command;
         let command = Command::new("ffprobe")
             .arg(tmp.path().to_str().unwrap())
             .output()
@@ -582,7 +603,7 @@ mod tests {
     fn aiff_read_and_write() {
         // Copy
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/aiff/quiet.aiff", &tmp).unwrap();
+        core::fs::copy("testdata/aiff/quiet.aiff", &tmp).unwrap();
 
         // Read
         let mut tag = Tag::read_from_aiff(&tmp).unwrap();
@@ -597,7 +618,7 @@ mod tests {
         tag.write_to_aiff_path(&tmp, Version::Id3v24).unwrap();
 
         // Check if not corrupted with ffprobe
-        use std::process::Command;
+        use core::process::Command;
         let command = Command::new("ffprobe")
             .arg(tmp.path().to_str().unwrap())
             .output()
@@ -665,7 +686,7 @@ mod tests {
 
         // With this file, we reach EOF before the expected chunk end.
         assert!(
-            matches!(error.kind, ErrorKind::Io(ref error) if error.kind() == io::ErrorKind::UnexpectedEof),
+            matches!(error.kind, ErrorKind::Io(ref error) if error.kind() == ErrorKind::UnexpectedEof),
             "unexpected error kind: {:?}",
             error.kind
         );
@@ -709,7 +730,7 @@ mod tests {
     #[test]
     fn wav_write_tagged_end() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/wav/tagged-end.wav", &tmp).unwrap();
+        core::fs::copy("testdata/wav/tagged-end.wav", &tmp).unwrap();
 
         edit_and_check_wav_tag(&tmp, &tmp).unwrap();
     }
@@ -717,7 +738,7 @@ mod tests {
     #[test]
     fn wav_write_tagged_mid() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/wav/tagged-mid.wav", &tmp).unwrap();
+        core::fs::copy("testdata/wav/tagged-mid.wav", &tmp).unwrap();
 
         edit_and_check_wav_tag(&tmp, &tmp).unwrap();
 
@@ -729,7 +750,7 @@ mod tests {
     #[test]
     fn wav_write_tagless() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/wav/tagless.wav", &tmp).unwrap();
+        core::fs::copy("testdata/wav/tagless.wav", &tmp).unwrap();
 
         edit_and_check_wav_tag("testdata/wav/tagged-mid.wav", &tmp).unwrap();
     }
@@ -737,7 +758,7 @@ mod tests {
     #[test]
     fn wav_write_trailing_data() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/wav/tagless-trailing-data.wav", &tmp).unwrap();
+        core::fs::copy("testdata/wav/tagless-trailing-data.wav", &tmp).unwrap();
 
         edit_and_check_wav_tag("testdata/wav/tagged-mid.wav", &tmp).unwrap();
 
@@ -754,19 +775,19 @@ mod tests {
         use crate::ErrorKind;
 
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/wav/tagless-corrupted.wav", &tmp).unwrap();
+        core::fs::copy("testdata/wav/tagless-corrupted.wav", &tmp).unwrap();
 
         let error = edit_and_check_wav_tag("testdata/wav/tagged-mid.wav", &tmp).unwrap_err();
 
         // With this file, we reach EOF before the expected chunk end.
         assert!(
-            matches!(error.kind, ErrorKind::Io(ref error) if error.kind() == io::ErrorKind::UnexpectedEof),
+            matches!(error.kind, ErrorKind::Io(ref error) if error.kind() == ErrorKind::UnexpectedEof),
             "unexpected error kind: {:?}",
             error.kind
         );
 
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::copy("testdata/wav/tagless-corrupted-2.wav", &tmp).unwrap();
+        core::fs::copy("testdata/wav/tagless-corrupted-2.wav", &tmp).unwrap();
 
         let error = edit_and_check_wav_tag("testdata/wav/tagged-mid.wav", &tmp).unwrap_err();
 
@@ -810,7 +831,7 @@ mod tests {
 
     fn check_trailing_data<const N: usize>(file: &mut File, data: &[u8; N]) {
         let mut trailing_data = [0; N];
-        file.seek(io::SeekFrom::End(-(N as i64))).unwrap();
+        file.seek(SeekFrom::End(-(N as i64))).unwrap();
 
         file.read_exact(&mut trailing_data).unwrap();
 

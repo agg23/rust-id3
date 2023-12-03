@@ -3,8 +3,12 @@ use crate::frame::{
     Comment, EncapsulatedObject, ExtendedText, Frame, Lyrics, Picture, PictureType,
     SynchronisedLyrics, Timestamp,
 };
-use std::borrow::Cow;
-use std::mem::swap;
+
+use alloc::borrow::Cow;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::mem::swap;
 
 /// TagLike is a trait that provides a set of useful default methods that make manipulation of tag
 /// frames easier.
@@ -86,7 +90,7 @@ pub trait TagLike: private::Sealed {
     /// use id3::{Tag, TagLike, Frame, Content};
     /// use id3::frame::ExtendedText;
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// fn main() -> Result<(), Box<dyn core::error::Error>> {
     ///     let mut tag = Tag::new();
     ///
     ///     tag.add_frame(Frame::text("TPE1", "Armin van Buuren"));
@@ -118,7 +122,7 @@ pub trait TagLike: private::Sealed {
     /// ```
     /// use id3::{Tag, TagLike};
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// fn main() -> Result<(), Box<dyn core::error::Error>> {
     ///     let mut tag = Tag::new();
     ///     tag.set_text("TRCK", "1/13");
     ///     assert_eq!(tag.get("TRCK").ok_or("no such frame")?.content().text(), Some("1/13"));
@@ -138,7 +142,7 @@ pub trait TagLike: private::Sealed {
     /// ```
     /// use id3::{Tag, TagLike};
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// fn main() -> Result<(), Box<dyn core::error::Error>> {
     ///     let mut tag = Tag::new();
     ///     tag.set_text_values("TCON", ["Synthwave", "Cyber Punk", "Electronic"]);
     ///     let text = tag.get("TCON").ok_or("no such frame")?.content().text();
@@ -642,7 +646,7 @@ pub trait TagLike: private::Sealed {
     /// ```
     /// use id3::frame::Content;
     /// use id3::{Frame, Tag, TagLike};
-    /// use std::borrow::Cow;
+    /// use core::borrow::Cow;
     ///
     /// let mut tag = Tag::new();
     /// tag.add_frame(Frame::text("TCON", "genre"));
@@ -1015,7 +1019,7 @@ pub trait TagLike: private::Sealed {
     /// use id3::{Tag, TagLike};
     /// use id3::frame::{Picture, PictureType};
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// fn main() -> Result<(), Box<dyn core::error::Error>> {
     ///     let mut tag = Tag::new();
     ///     tag.add_picture(Picture {
     ///         mime_type: "image/jpeg".to_string(),
@@ -1046,7 +1050,7 @@ pub trait TagLike: private::Sealed {
     /// use id3::{Tag, TagLike};
     /// use id3::frame::{Picture, PictureType};
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// fn main() -> Result<(), Box<dyn core::error::Error>> {
     ///     let mut tag = Tag::new();
     ///     tag.add_picture(Picture {
     ///         mime_type: "image/jpeg".to_string(),
@@ -1301,7 +1305,7 @@ pub trait TagLike: private::Sealed {
     /// use id3::{Tag, TagLike};
     /// use id3::frame::Lyrics;
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// fn main() -> Result<(), Box<dyn core::error::Error>> {
     ///     let mut tag = Tag::new();
     ///     tag.add_lyrics(Lyrics {
     ///         lang: "eng".to_string(),

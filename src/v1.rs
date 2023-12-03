@@ -1,8 +1,14 @@
+use acid_io::Read;
+use acid_io::Seek;
+use acid_io::SeekFrom;
+use alloc::string::String;
+
 use crate::{Error, ErrorKind, StorageFile};
-use std::cmp;
+use core::cmp;
+use core::ops;
+#[cfg(feature = "std")]
 use std::fs;
-use std::io;
-use std::ops;
+#[cfg(feature = "std")]
 use std::path::Path;
 
 /// Location of the ID3v1 tag chunk relative to the end of the file.
@@ -202,25 +208,25 @@ impl Tag {
     /// Checks whether the reader contains an ID3v1 tag.
     ///
     /// The reader position will be reset back to the previous position before returning.
-    pub fn is_candidate(mut reader: impl io::Read + io::Seek) -> crate::Result<bool> {
+    pub fn is_candidate(mut reader: impl Read + Seek) -> crate::Result<bool> {
         let initial_position = reader.stream_position()?;
-        reader.seek(io::SeekFrom::End(TAG_CHUNK.start))?;
+        reader.seek(SeekFrom::End(TAG_CHUNK.start))?;
         let mut buf = [0; 3];
         let nread = reader.read(&mut buf)?;
-        reader.seek(io::SeekFrom::Start(initial_position))?;
+        reader.seek(SeekFrom::Start(initial_position))?;
         Ok(&buf[..nread] == b"TAG")
     }
 
     /// Seeks to and reads a ID3v1 tag from the reader.
-    pub fn read_from(mut reader: impl io::Read + io::Seek) -> crate::Result<Tag> {
+    pub fn read_from(mut reader: impl Read + Seek) -> crate::Result<Tag> {
         let mut tag_buf = [0; 355];
-        let file_len = reader.seek(io::SeekFrom::End(0))?;
+        let file_len = reader.seek(SeekFrom::End(0))?;
         if file_len >= XTAG_CHUNK.start.unsigned_abs() {
-            reader.seek(io::SeekFrom::End(XTAG_CHUNK.start))?;
+            reader.seek(SeekFrom::End(XTAG_CHUNK.start))?;
             reader.read_exact(&mut tag_buf)?;
         } else if file_len >= TAG_CHUNK.start.unsigned_abs() {
             let l = tag_buf.len() as i64;
-            reader.seek(io::SeekFrom::End(TAG_CHUNK.start))?;
+            reader.seek(SeekFrom::End(TAG_CHUNK.start))?;
             reader.read_exact(&mut tag_buf[(l + TAG_CHUNK.start) as usize..])?;
         } else {
             return Err(Error::new(
@@ -296,6 +302,7 @@ impl Tag {
     }
 
     /// Attempts to read an ID3v1 tag from the file at the indicated path.
+    #[cfg(feature = "std")]
     pub fn read_from_path(path: impl AsRef<Path>) -> crate::Result<Tag> {
         let file = fs::File::open(path)?;
         Tag::read_from(file)
@@ -307,6 +314,7 @@ impl Tag {
     ///
     /// Returns true if the file initially contained a tag.
     #[deprecated(note = "Use remove_from_file")]
+    #[cfg(feature = "std")]
     pub fn remove(file: &mut fs::File) -> crate::Result<bool> {
         Self::remove_from_file(file)
     }
@@ -316,11 +324,13 @@ impl Tag {
     /// The file cursor position will be reset back to the previous position before returning.
     ///
     /// Returns true if the file initially contained a tag.
+    #[cfg(feature = "std")]
+
     pub fn remove_from_file(mut file: impl StorageFile) -> crate::Result<bool> {
         let cur_pos = file.stream_position()?;
-        let file_len = file.seek(io::SeekFrom::End(0))?;
+        let file_len = file.seek(SeekFrom::End(0))?;
         let has_ext_tag = if file_len >= XTAG_CHUNK.start.unsigned_abs() {
-            file.seek(io::SeekFrom::End(XTAG_CHUNK.start))?;
+            file.seek(SeekFrom::End(XTAG_CHUNK.start))?;
             let mut b = [0; 4];
             file.read_exact(&mut b)?;
             &b == b"TAG+"
@@ -328,7 +338,7 @@ impl Tag {
             false
         };
         let has_tag = if file_len >= TAG_CHUNK.start.unsigned_abs() {
-            file.seek(io::SeekFrom::End(TAG_CHUNK.start))?;
+            file.seek(SeekFrom::End(TAG_CHUNK.start))?;
             let mut b = [0; 3];
             file.read_exact(&mut b)?;
             &b == b"TAG"
@@ -343,7 +353,7 @@ impl Tag {
         } else {
             None
         };
-        file.seek(io::SeekFrom::Start(cmp::min(
+        file.seek(SeekFrom::Start(cmp::min(
             truncate_to.unwrap_or(cur_pos),
             cur_pos,
         )))?;
@@ -356,6 +366,7 @@ impl Tag {
     /// Removes an ID3v1 tag plus possible extended data if any.
     ///
     /// Returns true if the file initially contained a tag.
+    #[cfg(feature = "std")]
     pub fn remove_from_path(path: impl AsRef<Path>) -> crate::Result<bool> {
         let mut file = fs::OpenOptions::new().read(true).write(true).open(path)?;
         Tag::remove_from_file(&mut file)
@@ -375,8 +386,8 @@ impl Tag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::Seek;
+    use core::fs;
+    use core::Seek;
     use tempfile::tempdir;
 
     #[test]
@@ -404,16 +415,16 @@ mod tests {
         {
             let mut tag_file = fs::File::create(&tmp_name).unwrap();
             let mut original = fs::File::open("testdata/id3v1.id3").unwrap();
-            io::copy(&mut original, &mut tag_file).unwrap();
+            copy(&mut original, &mut tag_file).unwrap();
         }
         let mut tag_file = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .open(&tmp_name)
             .unwrap();
-        tag_file.seek(io::SeekFrom::Start(0)).unwrap();
+        tag_file.seek(SeekFrom::Start(0)).unwrap();
         assert!(Tag::remove_from_file(&mut tag_file).unwrap());
-        tag_file.seek(io::SeekFrom::Start(0)).unwrap();
+        tag_file.seek(SeekFrom::Start(0)).unwrap();
         assert!(!Tag::remove_from_file(&mut tag_file).unwrap());
     }
 }

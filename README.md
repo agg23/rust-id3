@@ -1,4 +1,4 @@
-rust-id3
+rust-id3 - Mangled for `no_std` support
 ========
 [![Build Status](https://github.com/polyfloyd/rust-id3/workflows/CI/badge.svg)](https://github.com/polyfloyd/rust-id3/actions)
 [![Crate](https://img.shields.io/crates/v/id3.svg)](https://crates.io/crates/id3)
